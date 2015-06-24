@@ -112,7 +112,7 @@ object MnistRandomFFT extends Serializable with Logging {
     head(appName, "0.1")
     help("help") text("prints this usage text")
     opt[String]("trainLocation") required() action { (x,c) => c.copy(trainLocation=x) }
-    opt[String]("trainLocationLabels") required() action { (x,c) => c.copy(testLocationLabels=x) }
+    opt[String]("trainLocationLabels") required() action { (x,c) => c.copy(trainLocationLabels=x) }
     opt[String]("testLocation") required() action { (x,c) => c.copy(testLocation=x) }
     opt[String]("testLocationLabels") required() action { (x,c) => c.copy(testLocationLabels=x) }
     opt[Int]("numFFTs") action { (x,c) => c.copy(numFFTs=x) }
