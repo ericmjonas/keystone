@@ -3,7 +3,7 @@ package pipelines.jonas
 import breeze.stats.distributions.{RandBasis, ThreadLocalRandomGenerator}
 import breeze.linalg._
 import evaluation.MulticlassClassifierEvaluator
-import loaders.{CsvDataLoader, LabeledData}
+import loaders.{CsvDataLoader, LabeledData, ImageNetLoader}
 import nodes.learning.{BlockLinearMapper, BlockLeastSquaresEstimator}
 import nodes.stats.{LinearRectifier, PaddedFFT, RandomSignNode}
 import nodes.util.{ZipVectors, ClassLabelIndicatorsFromIntLabels, MaxClassifier}
@@ -33,12 +33,16 @@ object MnistRandomFFT extends Serializable with Logging {
 
     val startTime = System.nanoTime()
 
-    val train = LabeledData(
-      CsvDataLoader(sc, conf.trainLocation, conf.numPartitions)
-        // The pipeline expects 0-indexed class labels, but the labels in the file are 1-indexed
-        .map(x => (x(0).toInt - 1, x(1 until x.length)))
-        .cache())
-    val labels = ClassLabelIndicatorsFromIntLabels(numClasses).apply(train.labels)
+    // val train = LabeledData(
+    //   CsvDataLoader(sc, conf.trainLocation, conf.numPartitions)
+    //     // The pipeline expects 0-indexed class labels, but the labels in the file are 1-indexed
+    //     .map(x => (x(0).toInt - 1, x(1 until x.length)))
+    //     .cache())
+    val train = 
+        ImageNetLoader(sc, conf.trainLocation, conf.trainLocationLabels)
+        .cache()
+
+    val labels = ClassLabelIndicatorsFromIntLabels(numClasses).apply(train.map(_.label))
 
     val batchFeaturizer = (0 until numFFTBatches).map { batch =>
       (0 until fftsPerBatch).map { x =>
@@ -46,30 +50,36 @@ object MnistRandomFFT extends Serializable with Logging {
       }
     }
 
+    val data_dense_vector = train.map(_.image.getSingleChannelAsFloatArray())
+    val dd2 = data_dense_vector.map(convert(_, Double))
+    val data_dense_vector_breeze = dd2.map(breeze.linalg.DenseVector[Double](_))
+
     val trainingBatches = batchFeaturizer.map { x =>
-      ZipVectors(x.map(y => y.apply(train.data))).cache()
+      ZipVectors(x.map(y => y.apply(data_dense_vector_breeze))).cache()
     }
 
     // Train the model
     val blockLinearMapper = new BlockLeastSquaresEstimator(
       conf.blockSize, 1, conf.lambda.getOrElse(0)).fit(trainingBatches, labels)
 
-    val test = LabeledData(
-      CsvDataLoader(sc, conf.testLocation, conf.numPartitions)
-        // The pipeline expects 0-indexed class labels, but the labels in the file are 1-indexed
-        .map(x => (x(0).toInt - 1, x(1 until x.length)))
-        .cache())
-    val actual = test.labels
+    val test =
+      ImageNetLoader(sc, conf.testLocation, conf.testLocationLabels)
+        .cache()
+
+    val actual = test.map(_.label)
+    val data_dense_vector_test = test.map(_.image.getSingleChannelAsFloatArray())
+    val dd2_test = data_dense_vector.map(convert(_, Double))
+    val data_dense_vector_breeze_test = dd2_test.map(breeze.linalg.DenseVector[Double](_))
 
     val testBatches = batchFeaturizer.map { x =>
-      ZipVectors(x.map(y => y.apply(test.data))).cache()
+      ZipVectors(x.map(y => y.apply(data_dense_vector_breeze_test))).cache()
     }
 
     // Calculate train error
     blockLinearMapper.applyAndEvaluate(trainingBatches,
       (trainPredictedValues: RDD[DenseVector[Double]]) => {
         val predicted = MaxClassifier(trainPredictedValues)
-        val evaluator = MulticlassClassifierEvaluator(predicted, train.labels, numClasses)
+        val evaluator = MulticlassClassifierEvaluator(predicted, train.map(_.label), numClasses)
         logInfo("Train Error is " + (100 * evaluator.totalError) + "%")
       }
     )
@@ -89,7 +99,9 @@ object MnistRandomFFT extends Serializable with Logging {
 
   case class MnistRandomFFTConfig(
       trainLocation: String = "",
+      trainLocationLabels: String = "",
       testLocation: String = "",
+      testLocationLabels: String = "",
       numFFTs: Int = 200,
       blockSize: Int = 2048,
       numPartitions: Int = 10,
@@ -100,7 +112,9 @@ object MnistRandomFFT extends Serializable with Logging {
     head(appName, "0.1")
     help("help") text("prints this usage text")
     opt[String]("trainLocation") required() action { (x,c) => c.copy(trainLocation=x) }
+    opt[String]("trainLocationLabels") required() action { (x,c) => c.copy(testLocationLabels=x) }
     opt[String]("testLocation") required() action { (x,c) => c.copy(testLocation=x) }
+    opt[String]("testLocationLabels") required() action { (x,c) => c.copy(testLocationLabels=x) }
     opt[Int]("numFFTs") action { (x,c) => c.copy(numFFTs=x) }
     opt[Int]("blockSize") validate { x =>
       // Bitwise trick to test if x is a power of 2
