@@ -20,7 +20,10 @@ object ImageNetLoader {
    *                 that each tar file contains images within a directory. The name of the
    *                 directory is treated as the className.
    * @param labelsPath Local file that maps classNames to a numeric value
-   */
+    */
+  // TODO(ericmjonas) We should fix this so it has some idea of the number of classes
+  // it has read for sanity checking of user-provided input
+  
   def apply(sc: SparkContext, dataPath: String, labelsPath: String): RDD[LabeledImage] = {
     val filePathsRDD = ImageLoaderUtils.getFilePathsRDD(sc, dataPath)
 
