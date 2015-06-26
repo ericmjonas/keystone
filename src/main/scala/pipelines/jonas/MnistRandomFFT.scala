@@ -29,31 +29,24 @@ object MnistRandomFFT extends Serializable with Logging {
 
     val randomSignSource = new RandBasis(new ThreadLocalRandomGenerator(new MersenneTwister(conf.seed)))
 
-    // The number of pixels in an MNIST image (28 x 28 = 784)
-    val mnistImageSize = 784
+    val imageSize = conf.imageSize
 
-    // Because the mnistImageSize is 784, we get 512 PaddedFFT features per FFT.
+    // Because the imageSize is 784, we get 512 PaddedFFT features per FFT.
     // So, calculate how many FFTs are needed per block to get the desired block size.
     val fftsPerBatch = conf.blockSize / 512
     val numFFTBatches = math.ceil(conf.numFFTs.toDouble/fftsPerBatch).toInt
 
     val startTime = System.nanoTime()
 
-    // val train = LabeledData(
-    //   CsvDataLoader(sc, conf.trainLocation, conf.numPartitions)
-    //     // The pipeline expects 0-indexed class labels, but the labels in the file are 1-indexed
-    //     .map(x => (x(0).toInt - 1, x(1 until x.length)))
-    //     .cache())
-    println("reading images from " + conf.trainLocation)
     val train = 
-        ImageNetLoader(sc, conf.trainLocation, conf.trainLocationLabels)
+        ImageNetLoader(sc, conf.trainLocation, conf.labelMap)
         .cache()
 
     val labels = ClassLabelIndicatorsFromIntLabels(numClasses).apply(train.map(_.label))
     println("train Got " + train.count + " features " + labels.count + " labels")
     val batchFeaturizer = (0 until numFFTBatches).map { batch =>
       (0 until fftsPerBatch).map { x =>
-        RandomSignNode(mnistImageSize, randomSignSource) then PaddedFFT then LinearRectifier(0.0)
+        RandomSignNode(imageSize, randomSignSource) then PaddedFFT then LinearRectifier(0.0)
       }
     }
 
@@ -70,7 +63,7 @@ object MnistRandomFFT extends Serializable with Logging {
       conf.blockSize, 1, conf.lambda.getOrElse(0)).fit(trainingBatches, labels)
 
     val test =
-      ImageNetLoader(sc, conf.testLocation, conf.testLocationLabels)
+      ImageNetLoader(sc, conf.testLocation, conf.labelMap)
         .cache()
 
     val actual = test.map(_.label)
@@ -107,9 +100,9 @@ object MnistRandomFFT extends Serializable with Logging {
 
   case class MnistRandomFFTConfig(
       trainLocation: String = "",
-      trainLocationLabels: String = "",
       testLocation: String = "",
-      testLocationLabels: String = "",
+      labelMap: String = "",
+      imageSize : Int = 28*28, 
       numFFTs: Int = 200,
       blockSize: Int = 2048,
       numPartitions: Int = 10,
@@ -120,10 +113,10 @@ object MnistRandomFFT extends Serializable with Logging {
     head(appName, "0.1")
     help("help") text("prints this usage text")
     opt[String]("trainLocation") required() action { (x,c) => c.copy(trainLocation=x) }
-    opt[String]("trainLocationLabels") required() action { (x,c) => c.copy(trainLocationLabels=x) }
     opt[String]("testLocation") required() action { (x,c) => c.copy(testLocation=x) }
-    opt[String]("testLocationLabels") required() action { (x,c) => c.copy(testLocationLabels=x) }
+    opt[String]("labelMap") required() action { (x,c) => c.copy(labelMap=x) }
     opt[Int]("numFFTs") action { (x,c) => c.copy(numFFTs=x) }
+    opt[Int]("imageSize") action { (x,c) => c.copy(imageSize=x) }
     opt[Int]("blockSize") validate { x =>
       // Bitwise trick to test if x is a power of 2
       if (x % 512 == 0) {
