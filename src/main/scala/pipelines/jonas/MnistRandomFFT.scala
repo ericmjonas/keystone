@@ -12,10 +12,16 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.rdd.RDD
 import pipelines._
 import scopt.OptionParser
-
+import utils.{ImageUtils, LabeledImage}
 
 object MnistRandomFFT extends Serializable with Logging {
   val appName = "JonasMnistRandomFFT"
+
+  def convert_a(x: LabeledImage) : Array[Float] = { 
+    
+    ImageUtils.toGrayScale(x.image).getSingleChannelAsFloatArray()
+
+ }
 
   def run(sc: SparkContext, conf: MnistRandomFFTConfig) {
     // This is a property of the MNIST Dataset (digits 0 - 9)
@@ -38,19 +44,20 @@ object MnistRandomFFT extends Serializable with Logging {
     //     // The pipeline expects 0-indexed class labels, but the labels in the file are 1-indexed
     //     .map(x => (x(0).toInt - 1, x(1 until x.length)))
     //     .cache())
+    println("reading images from " + conf.trainLocation)
     val train = 
         ImageNetLoader(sc, conf.trainLocation, conf.trainLocationLabels)
         .cache()
 
     val labels = ClassLabelIndicatorsFromIntLabels(numClasses).apply(train.map(_.label))
-
+    println("train Got " + train.count + " features " + labels.count + " labels")
     val batchFeaturizer = (0 until numFFTBatches).map { batch =>
       (0 until fftsPerBatch).map { x =>
         RandomSignNode(mnistImageSize, randomSignSource) then PaddedFFT then LinearRectifier(0.0)
       }
     }
 
-    val data_dense_vector = train.map(_.image.getSingleChannelAsFloatArray())
+    val data_dense_vector = train.map(convert_a)
     val dd2 = data_dense_vector.map(convert(_, Double))
     val data_dense_vector_breeze = dd2.map(breeze.linalg.DenseVector[Double](_))
 
@@ -67,8 +74,9 @@ object MnistRandomFFT extends Serializable with Logging {
         .cache()
 
     val actual = test.map(_.label)
-    val data_dense_vector_test = test.map(_.image.getSingleChannelAsFloatArray())
-    val dd2_test = data_dense_vector.map(convert(_, Double))
+   println("test Got " + test.count + " features " + actual.count + " labels")
+    val data_dense_vector_test = test.map(convert_a)
+    val dd2_test = data_dense_vector_test.map(convert(_, Double))
     val data_dense_vector_breeze_test = dd2_test.map(breeze.linalg.DenseVector[Double](_))
 
     val testBatches = batchFeaturizer.map { x =>
@@ -88,7 +96,7 @@ object MnistRandomFFT extends Serializable with Logging {
     blockLinearMapper.applyAndEvaluate(testBatches,
       (testPredictedValues: RDD[DenseVector[Double]]) => {
         val predicted = MaxClassifier(testPredictedValues)
-        val evaluator = MulticlassClassifierEvaluator(predicted, actual, numClasses)
+        val evaluator = MulticlassClassifierEvaluator(predicted, test.map(_.label), numClasses)
         logInfo("TEST Error is " + (100 * evaluator.totalError) + "%")
       }
     )
