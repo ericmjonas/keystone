@@ -18,7 +18,8 @@ object ImageUtils extends Logging {
       try {
         val img = ImageIO.read(fileBytes)
         if (img != null) {
-          if (img.getHeight() < 36 || img.getWidth() < 36) {
+          if (img.getHeight() < 10 || img.getWidth() < 10) {
+            // TODO(ericmjonas) Make this check a programmatic options
             logWarning(s"Ignoring SMALL IMAGE ${img.getHeight}x${img.getWidth()}")
             None
           } else {
