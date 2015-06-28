@@ -162,7 +162,7 @@ class BlockLeastSquaresEstimator(blockSize: Int, numIter: Int, lambda: Double = 
       labelScaler.apply(trainingLabels).map(_.toArray)).cache()
     val numRows = Some(b.numRows())
     val numCols = Some(blockSize.toLong)
-
+    println("BlockLeastSquaresEstimator.fit numRows=" + numRows + " numCols=" + numCols)
     // NOTE: This will cause trainingFeatures to be evaluated twice
     // which might not be optimal if its not cached ?
     val featureScalers = trainingFeatures.map { rdd =>
@@ -175,6 +175,11 @@ class BlockLeastSquaresEstimator(blockSize: Int, numIter: Int, lambda: Double = 
       }.map(RowPartition), numRows, numCols)
     }
 
+    println("numBlocks " + A.length)
+    println("first block rows per part " + A(0).rdd.map(x => x.mat.rows).collect().mkString(","))
+    println("first block cols per part " + A(0).rdd.map(x => x.mat.cols).collect().mkString(","))
+    println("labels rows per part " + b.rdd.map(x => x.mat.rows).collect().mkString(","))
+    println("labels cols per part " + b.rdd.map(x => x.mat.cols).collect().mkString(","))
     val bcd = new BlockCoordinateDescent()
     val models = bcd.solveLeastSquaresWithL2(
       A, b, Array(lambda), numIter, new NormalEquations()).transpose

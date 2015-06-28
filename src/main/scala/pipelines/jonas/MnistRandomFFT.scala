@@ -71,7 +71,7 @@ object MnistRandomFFT extends Serializable with Logging {
     println(labels.mapPartitions(iter => Iterator.single(iter.length)).collect().mkString(","))
     // Train the model
     val blockLinearMapper = new BlockLeastSquaresEstimator(
-      conf.blockSize, 1, conf.lambda.getOrElse(0)).fit(trainingBatches, labels)
+      conf.blockSize, 1, conf.lambda.getOrElse(0)).fit(trainingBatches(0), labels)
 
     val test =
       ImageNetLoader(sc, conf.testLocation, conf.labelMap)
