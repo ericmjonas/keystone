@@ -45,7 +45,8 @@ object MnistRandomFFT extends Serializable with Logging {
         ImageNetLoader(sc, conf.trainLocation, conf.labelMap)
         .cache()
 
-    val labels = ClassLabelIndicatorsFromIntLabels(numClasses).apply(train.map(_.label))
+    val labels = ClassLabelIndicatorsFromIntLabels(numClasses).apply(train.map(_.label)).cache()
+
     println("train Got " + train.count + " features " + labels.count + " labels")
 
     val data_dense_vector = train.map(convert_a)
@@ -65,6 +66,9 @@ object MnistRandomFFT extends Serializable with Logging {
       ZipVectors(x.map(y => y.apply(data_dense_vector_breeze))).cache()
     }
 
+    println(trainingBatches(0).mapPartitions(iter => Iterator.single(iter.length)).collect().mkString(","))
+
+    println(labels.mapPartitions(iter => Iterator.single(iter.length)).collect().mkString(","))
     // Train the model
     val blockLinearMapper = new BlockLeastSquaresEstimator(
       conf.blockSize, 1, conf.lambda.getOrElse(0)).fit(trainingBatches, labels)
