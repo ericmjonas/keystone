@@ -33,7 +33,10 @@ object MnistRandomFFT extends Serializable with Logging {
 
     // Because the imageSize is 784, we get 512 PaddedFFT features per FFT.
     // So, calculate how many FFTs are needed per block to get the desired block size.
-    val fftsPerBatch = conf.blockSize / 512
+
+    val fftsPerBatch = math.max(conf.blockSize /  (PaddedFFT.nextPositivePowerOfTwo(imageSize) / 2), 1)
+    //val fftsPerBatch = conf.blockSize /  (PaddedFFT.nextPositivePowerOfTwo(imageSize) / 2)
+
     val numFFTBatches = math.ceil(conf.numFFTs.toDouble/fftsPerBatch).toInt
 
     val startTime = System.nanoTime()
@@ -44,15 +47,19 @@ object MnistRandomFFT extends Serializable with Logging {
 
     val labels = ClassLabelIndicatorsFromIntLabels(numClasses).apply(train.map(_.label))
     println("train Got " + train.count + " features " + labels.count + " labels")
+
+    val data_dense_vector = train.map(convert_a)
+    val dd2 = data_dense_vector.map(convert(_, Double))
+    val data_dense_vector_breeze = dd2.map(breeze.linalg.DenseVector[Double](_)).cache()
+    println("fftsPerBatch=" + fftsPerBatch)
+    println("data_dense_vector_breeze.count() =" + data_dense_vector_breeze.count())
+
     val batchFeaturizer = (0 until numFFTBatches).map { batch =>
       (0 until fftsPerBatch).map { x =>
         RandomSignNode(imageSize, randomSignSource) then PaddedFFT then LinearRectifier(0.0)
       }
     }
 
-    val data_dense_vector = train.map(convert_a)
-    val dd2 = data_dense_vector.map(convert(_, Double))
-    val data_dense_vector_breeze = dd2.map(breeze.linalg.DenseVector[Double](_))
 
     val trainingBatches = batchFeaturizer.map { x =>
       ZipVectors(x.map(y => y.apply(data_dense_vector_breeze))).cache()
